@@ -1,0 +1,99 @@
+#!/bin/bash
+### Copyright (c) 2010 Remy van Elst
+#Permission is hereby granted, free of charge, to any person obtaining a copy
+#of this software and associated documentation files (the "Software"), to deal
+#in the Software without restriction, including without limitation the rights
+#to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+#copies of the Software, and to permit persons to whom the Software is
+#furnished to do so, subject to the following conditions:
+#
+#The above copyright notice and this permission notice shall be included in
+#all copies or substantial portions of the Software.
+#
+#THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+#IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+#FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+#AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+#LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+#OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+#THE SOFTWARE.
+
+# install ssmtp and configure it like this:
+# /etc/ssmtp/ssmtp.conf:
+# root=
+# mailhub=smtp.gmail.com:587
+# hostname=[YOU]@gmail.com
+# UseSTARTTLS=YES
+# AuthUser=[YOU]@gmail.com
+# AuthPass=[GMAILPASSWORD]
+# this will mail the tasks via gmail's ssl enabled mailserver.
+
+#taken lijstje
+TODOFILE=$HOME/todo
+#en dan via de webinterface
+WEBTODO=/var/www/task/tasks.php
+#WebIP wisser
+WEBIP=/var/www/task/iplist.txt
+#tijdelijk bestand aanmaken waar 10 taken in gezet worden
+TODOPRO="/tmp/todopro.$$.`date +%H`"
+touch $TODOPRO
+#en nog een bestand aanmaken waar de rest van de taken in gezet word die dan weer terug gaan naar de takenlijst.
+TODOBEW="/tmp/todobew.$$.`date +%H`"
+touch $TODOBEW
+#naar wie moet de taak gemaild worden?
+MAILWIE='yourmail@wherethetodoismailed.com'
+#en naar wie nog meer?
+MAILNOGIEMAND='secondmail@tasklist.org'
+
+#De taken van de webinterface toevoegen aan het todo bestand.
+if [ -s $WEBTODO ]; then
+	cat $WEBTODO >> $TODOFILE
+	rm -rf $WEBTODO;
+	echo "Webtaken leegmaken.";
+fi
+
+#IP adressen wissen
+if [ -s $WEBIP ]; then
+	rm -rf $WEBIP;
+	echo "WebIP adressen verwijderen";
+fi
+#wel even kijken of er wat moet gebeuren
+if [ ! -s $TODOFILE ]; then
+	echo "Geen taken om te mailen"
+	exit 1
+else
+
+	#dit was lastig. Eerst de eerste 10 taken in het tijdelijke bestand plempen, dan die 10 regels uit het takenlijste verwijderen, de overgebleven regels in een ander tijdelijk bestand plempen en dat weer terugzetten naar het takenlijstbestand...
+	sed '10q' $TODOFILE > $TODOPRO && sed '1,10d' $TODOFILE > $TODOBEW && cp $TODOBEW $TODOFILE
+
+	#bestand taak voor taak doorlopen
+	N=0
+	cat $TODOPRO  | while read LINE ; do
+		N=$((N+1))
+		TODO=$LINE
+		#onderwerk van de mail strippen, daar wil ik alleen de eerste 25 letters/cijfers
+		export TASKSUBJECT="`echo "${TODO//[^a-zA-Z0-9 ]/}" | cut -c -25`..."
+		#taak zelf nogmaals strippen, hier mogen ook comma's en punten in.
+		export TODOs="${TODO//[^a-zA-Z0-9 .,]/}"
+		#de regel die naar ssmtp doorgezet word. Stel je mailserver/programma in om te filteren op deze regel (dus op mails waarvan het onderwerp begint met TODO).
+		export MAILTODO="Subject: TODO: $TASKSUBJECT \n\n$TODOs\n\nToegevoegd op: `date "+%H:%M - %A, %d %B %Y"`"
+		echo "Taak $N = $LINE"
+		#zet de taak door naar ssmtp
+		echo -e $MAILTODO | /usr/sbin/ssmtp $MAILWIE
+		echo "Taak $N is doorgestuurd naar ssmtp voor $MAILWIE. Nu 5 seconden wachten."
+		#spampauze
+		sleep 5
+		#en herhaal het voor het volgende email adres, inclusief de spampauze
+		echo -e $MAILTODO | /usr/sbin/ssmtp $MAILNOGIEMAND
+		echo "Taak $N is doorgestuurd naar ssmtp voor $MAILNOGIEMAND. Nu 5 seconden wachten."
+		sleep 5
+	done
+	echo "Mailgedeelte afgerond"
+fi
+
+#het bestand met de 10 taken mag weg, en het andere tijdelijk bestand ook.
+echo "Tijdelijk bestand $TODOPRO verwijderen"
+rm $TODOPRO
+rm $TODOBEW
+echo "Script Klaar";
+
