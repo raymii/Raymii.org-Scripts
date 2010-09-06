@@ -1,0 +1,103 @@
+#!/bin/bash
+# Usage: ./buildm3u
+# buildm3u will build an m3u playlist for an entire directory tree.
+# It will place an m3u file in each subdirectory containing music files.
+# The paths to the music files are full paths.
+#
+# Thanks to Mendel Cooper for writing the "Advanced Bash-Scripting Guide"
+# Thanks to IntnsRed (creator of DebianHelp.org) for calling for this functionality.
+
+IFS=$'\n' # Input Field Separator
+# Normally this internal bash variable includes
+# any type of whitespace, but we want to avoid
+# splitting up file names with spaces.
+# \n means "new line".
+
+M3Ulist="`pwd`/M3UfileList.txt" # Look here to see where your
+# M3U files were created.
+# The backticks tell bash to execute
+# the pwd command and insert its output.
+# Since pwd returns the current working
+# directory, the file M3UfileList.txt
+# will be created in the directory from
+# which buildm3u is launched (not necessarily
+# the directory where buildm3u resides).
+rm -f $M3Ulist # Remove this file first.
+
+# indexCurrDir is a function.
+# I only call this function once,
+# but I didn't know that would be the
+# case when I started writing this script.
+# Still it never hurts to group some core
+# functionality into a function.
+#
+# indexCurrDir finds all music files in the current
+# working directory (including those in subdirectories).
+# The full paths to the files are written to an m3u file
+# named after the current working directory.
+indexCurrDir ()
+{
+FileList="" # initialize empty variable FileList
+for FileTypes in "ogg" "mp3" "flac" "wav" # loop over file types.
+# the user can add file types here.
+# FileTypes is a variable that cycles
+# through ogg, mp3, flac, and wav
+# inside the for loop.
+do # the next line of a for loop is do (bash syntax for a for loop)
+FindFiles=$(find $(pwd) -type f -iname "*.$FileTypes" | sort)
+# $(command) is equivalent to `command` (another way to do command substitution)
+# This is mainly useful because you can have nested command substitutions using $(),
+# which does not work with backquotes.
+# The above command finds files with an extension corresponding to
+# the the value of $FileType (FileType="ogg" the first time through, then "mp3",
+# then "flac", then "wav"). In bash, $ preceding a variable gets the value
+# of the variable. The results of the find command is piped to sort so that
+# your songs play in a sorted order (which is hopefully the intended order).
+# "i" in -iname specifies that the file types are case insensitive.
+FileList=$FileList$FindFiles
+# Each time through the for loop, the files found are appended to the list of files.
+# After exiting the loop, you have a single list of files for all extensions.
+# The find command above puts a \n (new line) after each file, so you are
+# building up a list of files with one file per line.
+done # end the loop with done (bash syntax for a for loop)
+
+if [ "${#FileList}" != "0" ] # do not write m3u file if file list is empty
+# The ${} is the most fool proof way of accessing
+# the value of a variable. The # before #FileList
+# means "get the length of the variable FileList".
+# Note that this means the total number of characters
+# summed over all file paths.
+# FileList is one big long variable, not an array.
+# Before I read about the IFS=$'\n' trick,
+# I was thinking of dumping the file names to a file, and
+# then reading them back into an array.
+then
+CurrDir=$(pwd) # get the current directory
+echo "$CurrDir" # Show the user where the script is finding music files.
+m3uName=$(basename $CurrDir) # basename is a command that strips off the parent
+# directories of a path.
+
+echo "Writing m3u playlist." # Tell the user that an m3u playlist is being created
+echo "$FileList" > "${m3uName}.m3u" # write the list of music files to the m3u file
+echo "$CurrDir/${m3uName}.m3u" >> "$M3Ulist" # Add the m3u file to the list of m3u files.
+# I have music scattered about,
+# and need to be reminded where the music is!
+fi
+}
+
+# This is the body of the script (like Main in a C program)
+AllDirs=$(find $(pwd) -type d | sort) # Get a complete list of full paths to subdirectories,
+# including the top level directory. This list
+# includes directories without music. They are skipped
+# inside the indexCurrDir function if no music is found.
+for Directory in $AllDirs # loop over the top level directory and all subdirectories
+# This didn't have to be recursive because the find command does the work.
+do
+cd "$Directory" # cd to each directory in turn
+indexCurrDir # Here, the function indexCurrDir is called
+# inside each directory. If there is music inside $Directory
+# (or in the subdirectories of $Directory),
+# then an m3u file for that directory will be created in $Directory.
+done
+
+exit 0 # an exit value of zero in bash means a successful exit
